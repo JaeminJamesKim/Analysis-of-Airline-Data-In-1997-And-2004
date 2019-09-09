@@ -1,0 +1,222 @@
+--Codes from this file is used to create tables within Hadoop environment to execute Hive queries,
+--as well as exporting .csv files based on Hive queries to produce visualizations.
+
+--Create a new table for airlinedelay data in 1997
+CREATE TABLE airlinedelay97 (Year INT,
+                           Month INT,
+                             DayofMonth INT,
+                             DayofWeek INT,
+                             DepTime INT,
+                             CRSDepTime INT,
+                             ArrTime INT,
+                             CRSArrTime INT,
+                             UniqueCarrier STRING,
+                             FlightNum INT,
+                             TailNum STRING,
+                             ActualElapsedTime INT,
+                             CRSElapsedTime INT,
+                             AirTime INT,
+                             ArrDelay INT,
+                             DepDelay INT,
+                             Origin STRING,
+                             Dest STRING,
+                             Distance INT,
+                             TaxiIn INT,
+                             TaxiOut INT,
+                             Cancelled INT,
+                             CancellationCode STRING,
+                             Diverted STRING,
+                             CarrierDelay INT,
+                             WeatherDelay INT,
+                             NASDelay INT,
+                             SecurityDelay INT,
+                             LateAircraftDelay INT)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ',';
+LOAD DATA LOCAL INPATH '1997.csv'
+OVERWRITE INTO TABLE airlinedelay97;
+
+--Create a new table for airlines(carriers) data
+CREATE TABLE carriers(Code STRING, Description STRING)
+ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
+WITH SERDEPROPERTIES (
+   "separatorChar" = ",",
+   "quoteChar"     = "\""
+);
+LOAD DATA LOCAL INPATH 'carriers.csv'
+OVERWRITE INTO TABLE carriers;
+
+
+--Create a new table for airlinedelay data in 2004
+
+CREATE TABLE airlinedelay04 (Year INT,
+                           Month INT,
+                             DayofMonth INT,
+                             DayofWeek INT,
+                             DepTime INT,
+                             CRSDepTime INT,
+                             ArrTime INT,
+                             CRSArrTime INT,
+                             UniqueCarrier STRING,
+                             FlightNum INT,
+                             TailNum STRING,
+                             ActualElapsedTime INT,
+                             CRSElapsedTime INT,
+                             AirTime INT,
+                             ArrDelay INT,
+                             DepDelay INT,
+                             Origin STRING,
+                             Dest STRING,
+                             Distance INT,
+                             TaxiIn INT,
+                             TaxiOut INT,
+                             Cancelled INT,
+                             CancellationCode STRING,
+                             Diverted STRING,
+                             CarrierDelay INT,
+                             WeatherDelay INT,
+                             NASDelay INT,
+                             SecurityDelay INT,
+                             LateAircraftDelay INT)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ',';
+LOAD DATA LOCAL INPATH '2004.csv'
+OVERWRITE INTO TABLE airlinedelay04;
+
+--Top 10 airlines with the most severe DEPARTURE delays in '97 for bar chart in section 1
+SELECT Description, MAX(DepDelay) as d
+FROM ad_carrier97 
+GROUP BY Description 
+ORDER BY d DESC, Description
+LIMIT 10;
+
+--Top 10 airlines with the most severe ARRIVAL delays in '97 for bar chart in section 1
+SELECT Description, MAX(ArrDelay) as d
+FROM ad_carrier97 
+GROUP BY Description 
+ORDER BY d DESC, Description
+LIMIT 10;
+
+--Top 10 airlines with the most severe DEPARTURE delays in '04 for bar chart in section 1
+SELECT Description, MAX(DepDelay) as d
+FROM ad_carrier04 
+GROUP BY Description 
+ORDER BY d DESC, Description
+LIMIT 10;
+
+--Top 10 airlines with the most severe ARRIVAL delays in '04 for bar chart in section 1
+SELECT Description, MAX(ArrDelay) as d
+FROM ad_carrier04 
+GROUP BY Description 
+ORDER BY d DESC, Description
+LIMIT 10;
+
+--Top 10 airlines with the most frequent departure delays in '97 for bar chart in section 1
+select Description, count(*) as cnt
+from ad_carrier97
+where DepDelay>0
+group by Description
+order by cnt desc
+limit 10;
+
+--Top 10 airlines with the most frequent arrival delays in '97 for bar chart in section 1
+select Description, count(*) as cnt
+from ad_carrier97
+where ArrDelay>0
+group by Description
+order by cnt desc
+limit 10;
+
+--Top 10 airlines with the most frequent departure delays in '04 for bar chart in section 1
+select Description, count(*) as cnt
+from ad_carrier04
+where DepDelay>0
+group by Description
+order by cnt desc
+limit 10;
+
+--Top 10 airlines with the most frequent arrival delays in '04 for bar chart in section 1
+select Description, count(*) as cnt
+from ad_carrier04
+where ArrDelay>0
+group by Description
+order by cnt desc
+limit 10;
+
+--Plane spec comparisons
+
+CREATE TABLE planedata (tailnum STRING, type STRING, manufacturer STRING, issue_date DATE, model STRING, status STRING, aircraft_type STRING, engine_type STRING, year INT)
+ROW FORMAT DELIMITED
+FIELDS TERMINATED BY ',';
+LOAD DATA LOCAL INPATH 'plane-data.csv'
+OVERWRITE INTO TABLE planedata;
+
+ALTER TABLE planedata CHANGE year planeyear INT;
+ALTER TABLE planedata CHANGE tailnum planetailnum STRING;
+
+CREATE TABLE airline_plane97 AS SELECT * FROM airlinedelay97, planedata WHERE airlinedelay97.TailNum = planedata.planetailnum;
+CREATE TABLE airline_plane04 AS SELECT * FROM airlinedelay04, planedata WHERE airlinedelay04.TailNum = planedata.planetailnum;
+
+CREATE TABLE airline_plane_carrier97 AS SELECT * FROM airline_plane97, carriers WHERE airline_plane97.UniqueCarrier = carriers.Code;
+CREATE TABLE airline_plane_carrier04 AS SELECT * FROM airline_plane04, carriers WHERE airline_plane04.UniqueCarrier = carriers.Code;
+
+
+--Delta's most frequent plane spec(Highest delay rate)
+SELECT type, manufacturer, issue_date, model, status, aircraft_type, engine_type, planeyear, Description, count(*) as cnt
+FROM airline_plane_carrier97
+WHERE Description='Delta Air Lines Inc.'
+GROUP BY Description, type, manufacturer, issue_date, model, status, aircraft_type, engine_type, planeyear
+ORDER BY cnt DESC, Description
+LIMIT 10;
+
+
+--Create a new table to combine airline data and airport data in 1997
+
+CREATE TABLE airline_airport97 AS SELECT ad_carrier97.Year, ad_carrier97.Month, ad_carrier97.DayofMonth,ad_carrier97.DayofWeek,ad_carrier97.DepTime, ad_carrier97.ArrTime,ad_carrier97.UniqueCarrier,ad_carrier97.FlightNum,ad_carrier97.TailNum,ad_carrier97.ActualElapsedTime,ad_carrier97.AirTime, ad_carrier97.ArrDelay,ad_carrier97.DepDelay,ad_carrier97.Origin,ad_carrier97.Dest,ad_carrier97.Distance, airport_origin.*, airport_dest.*
+FROM ad_carrier97, airport_origin, airport_dest WHERE ad_carrier97.Origin = airport_origin.iata_origin AND ad_carrier97.Dest = airport_dest.iata_dest;
+
+--Create a new table to combine airline data and airport data in 2004
+
+CREATE TABLE airline_airport04 AS SELECT ad_carrier04.Year, ad_carrier04.Month, ad_carrier04.DayofMonth,ad_carrier04.DayofWeek,ad_carrier04.DepTime, ad_carrier04.ArrTime,ad_carrier04.UniqueCarrier,ad_carrier04.FlightNum,ad_carrier04.TailNum,ad_carrier04.ActualElapsedTime,ad_carrier04.AirTime, ad_carrier04.ArrDelay,ad_carrier04.DepDelay,ad_carrier04.Origin,ad_carrier04.Dest,ad_carrier04.Distance, airport_origin.*, airport_dest.*
+FROM ad_carrier04, airport_origin, airport_dest WHERE ad_carrier04.Origin = airport_origin.iata_origin AND ad_carrier04.Dest = airport_dest.iata_dest;
+
+select code, year, count(DepDelay) as dct
+from combined_table
+where DepDelay>0
+group by code, year
+order by dct desc;
+
+
+
+--Create a new table to combine airlines data, carriers data, and plane-data data from both 1997 and 2004 into one.
+
+create table combined_table as
+select * from airline_plane_carrier97
+union all
+select * from airline_plane_carrier04;
+
+
+--Query to select manufacturer, planeyear and departure delay for streamgraph in section 2
+select manufacturer, planeyear, count(DepDelay) as dct
+from combined_table
+where DepDelay>0
+group by manufacturer, planeyear
+order by dct desc;
+
+--Query to select aircraft_type, planeyear and departure delay for streamgraph in section 2
+SELECT planeyear, aircraft_type, count(depdelay)
+FROM combined_table
+WHERE depdelay>0 and planeyear is not null
+group by planeyear, aircraft_type;
+
+--Query to select engine_type, planeyear and departure delay for streamgraph in section 2
+SELECT planeyear, engine_type, count(depdelay)
+FROM combined_table
+WHERE depdelay>0 and planeyear is not null
+group by planeyear, engine_type;
+
+--Query to see all departure delays by manufacturers for visualization in section 2.
+SELECT manufacturer, count(depdelay)
+FROM combined_table
+WHERE depdelay>0 and manufacturer is not null
+group by manufacturer;
